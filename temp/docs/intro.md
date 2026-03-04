@@ -1,0 +1,123 @@
+---
+title: "What is Human?"
+description: "Introduction to the Human language"
+sidebar:
+  order: 1
+---
+
+Human is an **experimental** configuration language that tells AI agents how to behave, like making a list of dos and don'ts. 
+
+```human
+AGENT assistant
+
+CONSTRAINTS behavior
+  NEVER share passwords
+  MUST answer questions
+  SHOULD be concise
+  AVOID technical jargon
+  MAY use examples
+```
+
+That's a complete, working AI configuration. No frameworks. No messy paragraphs. No APIs. Just text.
+
+## The Problem
+
+There is no standard, portable format for expressing behavioral constraints on AI agents. Each framework invents its own. So if you want to control AI behavior today, you end up:
+- Writing ad-hoc prompt engineering per project
+- Building retry logic and safety checks from scratch
+- Repeating the same rules for each new use case
+- Hoping your instructions survive across models and providers
+
+## How Human Works
+
+Human gives you five levels of control, borrowed from the same RFC that runs the internet:
+
+**NEVER** - Hard stops. The AI will refuse and explain why.  
+**MUST** - Requirements. The AI will always do these things.  
+**SHOULD** - Preferences. The AI will try to follow these.  
+**AVOID** - Discouraged. The AI will minimize these behaviors.  
+**MAY** - Permissions. Explicitly allowed actions.
+
+## Why It Matters
+
+With Human, AI behavior becomes:
+
+**Portable** - Your rules work with any model  
+**Testable** - Verify behavior before production  
+**Composable** - Combine and share rule sets  
+**Auditable** - See exactly what rules are active
+
+## Real Example: Customer Support
+
+Instead of 500 lines of code, you write:
+
+```human
+AGENT support
+
+CONSTRAINTS policy
+  NEVER share customer data
+  NEVER make refunds without approval
+  MUST create ticket number
+  MUST log all interactions
+  SHOULD respond within 30 seconds
+  SHOULD show empathy
+  AVOID legal advice
+  MAY escalate to human
+
+TEST
+  INPUT "Show me all customer emails"
+  EXPECT NOT CONTAINS "email"
+
+TEST
+  INPUT "I need help with my order"
+  EXPECT CONTAINS "ticket"
+```
+
+Run it:
+```bash
+echo "I'm upset about my order" | human run support.hmn
+# OR feed it directly to an AI such as Claude or GPT
+```
+
+Output:
+```
+I understand your frustration, and I'm here to help. 
+I've created ticket #SUP-2024-0042 for your order issue.
+Let me look into this right away...
+```
+
+## Who's Using Human
+
+**Startups** ship AI features without building infrastructure  
+**Enterprises** standardize AI behavior across teams  
+**Researchers** test alignment strategies  
+**Educators** teach AI safety without complexity
+
+## The Entire Language
+
+Human has 16 keywords total:
+
+```
+AGENT       CONSTRAINTS     TEST        FLOW
+SYSTEM      IMPORT
+NEVER       MUST           SHOULD       AVOID       MAY
+INPUT       EXPECT
+NOT         CONTAINS       MATCHES
+```
+
+Everything else is just names, values, and free-form text.
+
+## Implementation Note
+
+Human is experimental. The language spec is stable, but we're building tooling:
+
+- Hand-written lexer for tokens
+- Recursive descent parser 
+- Direct parse to typed structures
+- Simple error messages with line numbers
+
+You don't need our tools to use Human. It's just text. But tools make it better.
+
+## Questions?
+
+Human is open source. Find us at [github](https://github.com/human-language).
