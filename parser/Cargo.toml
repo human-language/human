@@ -1,0 +1,11 @@
+[package]
+name = "human-parser"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "human_parser"
+path = "src/lib.rs"
+
+[dependencies]
+human-lexer = { path = "../lexer" }
