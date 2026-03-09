@@ -19,13 +19,13 @@ fn main() {
 }
 
 fn die(msg: &str) -> ! {
-    eprintln!("human: {msg}");
+    eprintln!("hmn: {msg}");
     process::exit(2);
 }
 
 fn help() -> ! {
     eprint!("\
-usage: human <command> [flags] file...
+usage: hmn <command> [flags] file...
 
 commands:
   validate   check .hmn files for errors
@@ -115,9 +115,9 @@ fn read_and_parse(path: &Path) -> Result<human_parser::HmnFile, ()> {
 // ── Commands ──
 
 fn cmd_validate(args: &[String]) {
-    check_help(args, "usage: human validate file...");
+    check_help(args, "usage: hmn validate file...");
     if args.is_empty() {
-        die("usage: human validate file...");
+        die("usage: hmn validate file...");
     }
     let mut failed = false;
     for arg in args {
@@ -131,7 +131,7 @@ fn cmd_validate(args: &[String]) {
 fn cmd_compile(args: &[String]) {
     check_help(
         args,
-        "usage: human compile [-f format] file\n  formats: prompt (default), json, yaml, toml, txt, hmn",
+        "usage: hmn compile [-f format] file\n  formats: prompt (default), json, yaml, toml, txt, hmn",
     );
     let (format, file) = parse_compile_args(args);
     let path = Path::new(&file);
@@ -151,10 +151,10 @@ fn cmd_compile(args: &[String]) {
 }
 
 fn cmd_fmt(args: &[String]) {
-    check_help(args, "usage: human fmt [-w] file...");
+    check_help(args, "usage: hmn fmt [-w] file...");
     let (write_back, files) = parse_fmt_args(args);
     if files.is_empty() {
-        die("usage: human fmt [-w] file...");
+        die("usage: hmn fmt [-w] file...");
     }
     let mut failed = false;
     for file in &files {
@@ -164,7 +164,7 @@ fn cmd_fmt(args: &[String]) {
                 let output = human_compiler::hmn::emit_file(&hmn_file);
                 if write_back {
                     if let Err(e) = std::fs::write(path, &output) {
-                        eprintln!("human: {}: {e}", path.display());
+                        eprintln!("hmn: {}: {e}", path.display());
                         failed = true;
                     }
                 } else {
@@ -197,7 +197,7 @@ fn parse_compile_args(args: &[String]) -> (OutputFormat, String) {
     match args.len() {
         1 if !args[0].starts_with('-') => (OutputFormat::Prompt, args[0].clone()),
         3 if args[0] == "-f" => (parse_format(&args[1]), args[2].clone()),
-        _ => die("usage: human compile [-f format] file"),
+        _ => die("usage: hmn compile [-f format] file"),
     }
 }
 

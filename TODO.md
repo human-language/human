@@ -18,4 +18,3 @@
 
 # changes
 - change the cli tool to use "hmn" not "human"
-- 

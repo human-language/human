@@ -1,7 +1,7 @@
 use std::process::Command;
 
-fn human() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_human"))
+fn hmn() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_hmn"))
 }
 
 fn fixtures() -> std::path::PathBuf {
@@ -12,7 +12,7 @@ fn fixtures() -> std::path::PathBuf {
 
 #[test]
 fn help_flag() {
-    let out = human().arg("--help").output().unwrap();
+    let out = hmn().arg("--help").output().unwrap();
     assert_eq!(out.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("validate"), "stderr: {stderr}");
@@ -22,7 +22,7 @@ fn help_flag() {
 
 #[test]
 fn help_short() {
-    let out = human().arg("-h").output().unwrap();
+    let out = hmn().arg("-h").output().unwrap();
     assert_eq!(out.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("validate"));
@@ -30,7 +30,7 @@ fn help_short() {
 
 #[test]
 fn no_args() {
-    let out = human().output().unwrap();
+    let out = hmn().output().unwrap();
     assert_eq!(out.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("usage:"));
@@ -38,7 +38,7 @@ fn no_args() {
 
 #[test]
 fn unknown_command() {
-    let out = human().arg("bogus").output().unwrap();
+    let out = hmn().arg("bogus").output().unwrap();
     assert_eq!(out.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("unknown command: bogus"));
@@ -48,7 +48,7 @@ fn unknown_command() {
 
 #[test]
 fn validate_valid() {
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg(fixtures().join("valid.hmn"))
         .output()
@@ -60,7 +60,7 @@ fn validate_valid() {
 
 #[test]
 fn validate_broken() {
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg(fixtures().join("broken.hmn"))
         .output()
@@ -75,7 +75,7 @@ fn validate_broken() {
 
 #[test]
 fn validate_missing() {
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg("nonexistent.hmn")
         .output()
@@ -88,7 +88,7 @@ fn validate_missing() {
 
 #[test]
 fn validate_multiple() {
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg(fixtures().join("valid.hmn"))
         .arg(fixtures().join("broken.hmn"))
@@ -102,7 +102,7 @@ fn validate_multiple() {
 
 #[test]
 fn validate_with_imports() {
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg(fixtures().join("with_imports/main.hmn"))
         .output()
@@ -116,7 +116,7 @@ fn validate_with_imports() {
 
 #[test]
 fn compile_default() {
-    let out = human()
+    let out = hmn()
         .arg("compile")
         .arg(fixtures().join("valid.hmn"))
         .output()
@@ -129,7 +129,7 @@ fn compile_default() {
 
 #[test]
 fn compile_json() {
-    let out = human()
+    let out = hmn()
         .arg("compile")
         .arg("-f")
         .arg("json")
@@ -144,7 +144,7 @@ fn compile_json() {
 
 #[test]
 fn compile_hmn() {
-    let out = human()
+    let out = hmn()
         .arg("compile")
         .arg("-f")
         .arg("hmn")
@@ -161,7 +161,7 @@ fn compile_hmn() {
 #[test]
 fn compile_all_formats() {
     for format in &["prompt", "json", "yaml", "toml", "txt", "hmn"] {
-        let out = human()
+        let out = hmn()
             .arg("compile")
             .arg("-f")
             .arg(format)
@@ -183,7 +183,7 @@ fn compile_all_formats() {
 
 #[test]
 fn compile_broken() {
-    let out = human()
+    let out = hmn()
         .arg("compile")
         .arg(fixtures().join("broken.hmn"))
         .output()
@@ -197,7 +197,7 @@ fn compile_broken() {
 
 #[test]
 fn compile_bad_format() {
-    let out = human()
+    let out = hmn()
         .arg("compile")
         .arg("-f")
         .arg("bogus")
@@ -211,7 +211,7 @@ fn compile_bad_format() {
 
 #[test]
 fn compile_no_file() {
-    let out = human().arg("compile").output().unwrap();
+    let out = hmn().arg("compile").output().unwrap();
     assert_eq!(out.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("usage:"), "stderr: {stderr}");
@@ -219,7 +219,7 @@ fn compile_no_file() {
 
 #[test]
 fn compile_help() {
-    let out = human().arg("compile").arg("--help").output().unwrap();
+    let out = hmn().arg("compile").arg("--help").output().unwrap();
     assert_eq!(out.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("format"), "stderr: {stderr}");
@@ -229,7 +229,7 @@ fn compile_help() {
 
 #[test]
 fn fmt_stdout() {
-    let out = human()
+    let out = hmn()
         .arg("fmt")
         .arg(fixtures().join("valid.hmn"))
         .output()
@@ -247,7 +247,7 @@ fn fmt_write() {
     let path = tmp.path().join("test.hmn");
     std::fs::write(&path, src).unwrap();
 
-    let out = human()
+    let out = hmn()
         .arg("fmt")
         .arg("-w")
         .arg(&path)
@@ -263,7 +263,7 @@ fn fmt_write() {
 
 #[test]
 fn fmt_fragment() {
-    let out = human()
+    let out = hmn()
         .arg("fmt")
         .arg(fixtures().join("fragment.hmn"))
         .output()
@@ -277,7 +277,7 @@ fn fmt_fragment() {
 
 #[test]
 fn fmt_broken() {
-    let out = human()
+    let out = hmn()
         .arg("fmt")
         .arg(fixtures().join("broken.hmn"))
         .output()
@@ -293,7 +293,7 @@ fn fmt_broken() {
 
 #[test]
 fn compile_dash_f_alone() {
-    let out = human()
+    let out = hmn()
         .arg("compile")
         .arg("-f")
         .output()
@@ -305,7 +305,7 @@ fn compile_dash_f_alone() {
 
 #[test]
 fn compile_with_imports() {
-    let out = human()
+    let out = hmn()
         .arg("compile")
         .arg("-f")
         .arg("json")
@@ -321,7 +321,7 @@ fn compile_with_imports() {
 
 #[test]
 fn fmt_with_imports() {
-    let out = human()
+    let out = hmn()
         .arg("fmt")
         .arg(fixtures().join("with_imports/main.hmn"))
         .output()
@@ -338,7 +338,7 @@ fn fmt_write_broken() {
     let path = tmp.path().join("bad.hmn");
     std::fs::write(&path, "NOT VALID SYNTAX\n").unwrap();
 
-    let out = human()
+    let out = hmn()
         .arg("fmt")
         .arg("-w")
         .arg(&path)
@@ -351,7 +351,7 @@ fn fmt_write_broken() {
 
 #[test]
 fn validate_help() {
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg("--help")
         .output()
@@ -364,7 +364,7 @@ fn validate_help() {
 
 #[test]
 fn fmt_help() {
-    let out = human()
+    let out = hmn()
         .arg("fmt")
         .arg("--help")
         .output()
@@ -383,7 +383,7 @@ fn error_shows_source_context() {
     let path = tmp.path().join("test.hmn");
     std::fs::write(&path, "AGENT @bot\n").unwrap();
 
-    let out = human()
+    let out = hmn()
         .arg("fmt")
         .arg(&path)
         .output()
@@ -401,7 +401,7 @@ fn error_shows_arrow_location() {
     let path = tmp.path().join("test.hmn");
     std::fs::write(&path, "CONSTRAINTS\n  MUST be helpful\n").unwrap();
 
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg(&path)
         .output()
@@ -418,7 +418,7 @@ fn error_file_level_no_source() {
     let path = tmp.path().join("test.hmn");
     std::fs::write(&path, "CONSTRAINTS safety\n  NEVER lie\n").unwrap();
 
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg(&path)
         .output()
@@ -439,7 +439,7 @@ fn multiple_resolver_errors_separated() {
     std::fs::write(&frag_path, "AGENT other\n\nCONSTRAINTS safety\n  MUST be kind\n").unwrap();
     std::fs::write(&main_path, "IMPORT ./frag.hmn\n\nAGENT bot\n\nCONSTRAINTS safety\n  NEVER lie\n").unwrap();
 
-    let out = human()
+    let out = hmn()
         .arg("validate")
         .arg(&main_path)
         .output()
