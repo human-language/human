@@ -3,10 +3,11 @@ use tempfile::TempDir;
 use human_lexer::Span;
 use human_parser::{
     AgentDecl, ConstraintsBlock, Constraint, ConstraintLevel,
-    FlowBlock, FlowStep, Property, SystemDecl, Value,
+    FlowBlock, FlowStep, HmnFile, Import, ImportTarget, Property,
+    SystemDecl, TestBlock, TestExpect, TestInput, TestOp, Value,
 };
 use human_resolver::Resolved;
-use crate::{compile, compile_hmn, OutputFormat};
+use crate::{compile, compile_hmn, hmn::emit_file, OutputFormat};
 
 fn span() -> Span {
     Span { offset: 0, len: 0, line: 1, col: 1 }
@@ -812,4 +813,88 @@ fn json_multiple_flows() {
     let farewell = v["flows"]["farewell"].as_array().unwrap();
     assert_eq!(farewell.len(), 1);
     assert_eq!(farewell[0], "say goodbye");
+}
+
+// ── emit_file tests ──
+
+#[test]
+fn emit_file_with_tests() {
+    let file = HmnFile {
+        imports: vec![],
+        agent: Some(make_agent("bot", None, vec![])),
+        constraints: vec![],
+        flows: vec![],
+        tests: vec![TestBlock {
+            inputs: vec![
+                TestInput { value: "hello".to_string(), span: span() },
+            ],
+            expects: vec![
+                TestExpect {
+                    negated: false,
+                    op: TestOp::Contains,
+                    value: "hi".to_string(),
+                    span: span(),
+                },
+                TestExpect {
+                    negated: true,
+                    op: TestOp::Matches,
+                    value: "bye.*".to_string(),
+                    span: span(),
+                },
+            ],
+            span: span(),
+        }],
+    };
+    let out = emit_file(&file);
+    assert!(out.contains("AGENT bot\n"), "out: {out}");
+    assert!(out.contains("TEST\n"), "out: {out}");
+    assert!(out.contains("  INPUT \"hello\"\n"), "out: {out}");
+    assert!(out.contains("  EXPECT CONTAINS \"hi\"\n"), "out: {out}");
+    assert!(out.contains("  EXPECT NOT MATCHES \"bye.*\"\n"), "out: {out}");
+}
+
+#[test]
+fn emit_file_fragment() {
+    let file = HmnFile {
+        imports: vec![],
+        agent: None,
+        constraints: vec![make_constraints_block("safety", vec![
+            make_constraint(ConstraintLevel::Never, "lie"),
+        ])],
+        flows: vec![make_flow("greet", vec!["hello"])],
+        tests: vec![],
+    };
+    let out = emit_file(&file);
+    assert!(!out.contains("AGENT"), "out: {out}");
+    assert!(out.contains("CONSTRAINTS safety\n"), "out: {out}");
+    assert!(out.contains("  NEVER lie\n"), "out: {out}");
+    assert!(out.contains("FLOW greet\n"), "out: {out}");
+    assert!(out.contains("  hello\n"), "out: {out}");
+}
+
+#[test]
+fn emit_file_with_imports() {
+    let file = HmnFile {
+        imports: vec![
+            Import {
+                target: ImportTarget::Path("./rules.hmn".to_string()),
+                span: span(),
+            },
+            Import {
+                target: ImportTarget::Package("stdlib/safety".to_string()),
+                span: span(),
+            },
+        ],
+        agent: Some(make_agent("bot", None, vec![])),
+        constraints: vec![],
+        flows: vec![],
+        tests: vec![],
+    };
+    let out = emit_file(&file);
+    assert!(out.starts_with("IMPORT ./rules.hmn\n"), "out: {out}");
+    assert!(out.contains("IMPORT @stdlib/safety\n"), "out: {out}");
+    assert!(out.contains("AGENT bot\n"), "out: {out}");
+    let import_pos = out.find("IMPORT @stdlib").unwrap();
+    let agent_pos = out.find("AGENT bot").unwrap();
+    assert!(import_pos < agent_pos, "imports should come before agent");
 }

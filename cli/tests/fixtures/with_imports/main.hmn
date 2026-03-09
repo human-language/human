@@ -1,0 +1,6 @@
+IMPORT ./rules.hmn
+
+AGENT testbot
+
+FLOW greet
+  say hello

@@ -1,0 +1,370 @@
+use std::process::Command;
+
+fn human() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_human"))
+}
+
+fn fixtures() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+// ── help ──
+
+#[test]
+fn help_flag() {
+    let out = human().arg("--help").output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("validate"), "stderr: {stderr}");
+    assert!(stderr.contains("compile"), "stderr: {stderr}");
+    assert!(stderr.contains("fmt"), "stderr: {stderr}");
+}
+
+#[test]
+fn help_short() {
+    let out = human().arg("-h").output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("validate"));
+}
+
+#[test]
+fn no_args() {
+    let out = human().output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("usage:"));
+}
+
+#[test]
+fn unknown_command() {
+    let out = human().arg("bogus").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("unknown command: bogus"));
+}
+
+// ── validate ──
+
+#[test]
+fn validate_valid() {
+    let out = human()
+        .arg("validate")
+        .arg(fixtures().join("valid.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(out.stdout.is_empty());
+    assert!(out.stderr.is_empty());
+}
+
+#[test]
+fn validate_broken() {
+    let out = human()
+        .arg("validate")
+        .arg(fixtures().join("broken.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+}
+
+#[test]
+fn validate_missing() {
+    let out = human()
+        .arg("validate")
+        .arg("nonexistent.hmn")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error:") || stderr.contains("No such file"), "stderr: {stderr}");
+}
+
+#[test]
+fn validate_multiple() {
+    let out = human()
+        .arg("validate")
+        .arg(fixtures().join("valid.hmn"))
+        .arg(fixtures().join("broken.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert!(!stderr.contains("valid.hmn"), "valid file should not appear in errors: {stderr}");
+}
+
+#[test]
+fn validate_with_imports() {
+    let out = human()
+        .arg("validate")
+        .arg(fixtures().join("with_imports/main.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(out.stdout.is_empty());
+    assert!(out.stderr.is_empty());
+}
+
+// ── compile ──
+
+#[test]
+fn compile_default() {
+    let out = human()
+        .arg("compile")
+        .arg(fixtures().join("valid.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("# testbot"), "stdout: {stdout}");
+    assert!(stdout.contains("NEVER: lie"), "stdout: {stdout}");
+}
+
+#[test]
+fn compile_json() {
+    let out = human()
+        .arg("compile")
+        .arg("-f")
+        .arg("json")
+        .arg(fixtures().join("valid.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("invalid JSON");
+    assert_eq!(v["name"], "testbot");
+}
+
+#[test]
+fn compile_hmn() {
+    let out = human()
+        .arg("compile")
+        .arg("-f")
+        .arg("hmn")
+        .arg(fixtures().join("valid.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("AGENT testbot"), "stdout: {stdout}");
+    assert!(stdout.contains("CONSTRAINTS safety"), "stdout: {stdout}");
+    assert!(!stdout.contains("IMPORT"), "hmn output should not have imports");
+}
+
+#[test]
+fn compile_all_formats() {
+    for format in &["prompt", "json", "yaml", "toml", "txt", "hmn"] {
+        let out = human()
+            .arg("compile")
+            .arg("-f")
+            .arg(format)
+            .arg(fixtures().join("valid.hmn"))
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "format {format} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            !out.stdout.is_empty(),
+            "format {format} produced no output"
+        );
+    }
+}
+
+#[test]
+fn compile_broken() {
+    let out = human()
+        .arg("compile")
+        .arg(fixtures().join("broken.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+}
+
+#[test]
+fn compile_bad_format() {
+    let out = human()
+        .arg("compile")
+        .arg("-f")
+        .arg("bogus")
+        .arg(fixtures().join("valid.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("unknown format: bogus"), "stderr: {stderr}");
+}
+
+#[test]
+fn compile_no_file() {
+    let out = human().arg("compile").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("usage:"), "stderr: {stderr}");
+}
+
+#[test]
+fn compile_help() {
+    let out = human().arg("compile").arg("--help").output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("format"), "stderr: {stderr}");
+}
+
+// ── fmt ──
+
+#[test]
+fn fmt_stdout() {
+    let out = human()
+        .arg("fmt")
+        .arg(fixtures().join("valid.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("AGENT testbot"), "stdout: {stdout}");
+    assert!(stdout.contains("CONSTRAINTS safety"), "stdout: {stdout}");
+}
+
+#[test]
+fn fmt_write() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let src = "AGENT   bot\n\nCONSTRAINTS   safety\n  NEVER   lie\n";
+    let path = tmp.path().join("test.hmn");
+    std::fs::write(&path, src).unwrap();
+
+    let out = human()
+        .arg("fmt")
+        .arg("-w")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(out.stdout.is_empty(), "stdout should be empty with -w");
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(written.contains("AGENT bot\n"), "written: {written}");
+    assert!(written.contains("CONSTRAINTS safety\n"), "written: {written}");
+}
+
+#[test]
+fn fmt_fragment() {
+    let out = human()
+        .arg("fmt")
+        .arg(fixtures().join("fragment.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("CONSTRAINTS safety"), "stdout: {stdout}");
+    assert!(stdout.contains("FLOW greet"), "stdout: {stdout}");
+    assert!(!stdout.contains("AGENT"), "fragment should not have AGENT");
+}
+
+#[test]
+fn fmt_broken() {
+    let out = human()
+        .arg("fmt")
+        .arg(fixtures().join("broken.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+}
+
+// ── additional coverage ──
+
+#[test]
+fn compile_dash_f_alone() {
+    let out = human()
+        .arg("compile")
+        .arg("-f")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2), "bare -f should be usage error");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("usage:"), "stderr: {stderr}");
+}
+
+#[test]
+fn compile_with_imports() {
+    let out = human()
+        .arg("compile")
+        .arg("-f")
+        .arg("json")
+        .arg(fixtures().join("with_imports/main.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("invalid JSON");
+    assert_eq!(v["name"], "testbot");
+    assert!(v["constraints"].as_object().unwrap().contains_key("safety"), "should merge imported constraints");
+}
+
+#[test]
+fn fmt_with_imports() {
+    let out = human()
+        .arg("fmt")
+        .arg(fixtures().join("with_imports/main.hmn"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("IMPORT ./rules.hmn"), "imports should be preserved: {stdout}");
+    assert!(stdout.contains("AGENT testbot"), "stdout: {stdout}");
+}
+
+#[test]
+fn fmt_write_broken() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("bad.hmn");
+    std::fs::write(&path, "NOT VALID SYNTAX\n").unwrap();
+
+    let out = human()
+        .arg("fmt")
+        .arg("-w")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(content, "NOT VALID SYNTAX\n", "broken file should not be overwritten");
+}
+
+#[test]
+fn validate_help() {
+    let out = human()
+        .arg("validate")
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("usage:"), "stderr: {stderr}");
+    assert!(stderr.contains("validate"), "stderr: {stderr}");
+}
+
+#[test]
+fn fmt_help() {
+    let out = human()
+        .arg("fmt")
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("usage:"), "stderr: {stderr}");
+    assert!(stderr.contains("fmt"), "stderr: {stderr}");
+}

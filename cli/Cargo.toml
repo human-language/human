@@ -1,0 +1,18 @@
+[package]
+name = "human-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "human"
+path = "src/main.rs"
+
+[dependencies]
+human-lexer = { path = "../lexer" }
+human-parser = { path = "../parser" }
+human-resolver = { path = "../resolver" }
+human-compiler = { path = "../compiler" }
+
+[dev-dependencies]
+serde_json = "1"
+tempfile = "3"

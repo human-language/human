@@ -1,0 +1,6 @@
+CONSTRAINTS safety
+  NEVER lie
+  MUST be helpful
+
+FLOW greet
+  say hello
