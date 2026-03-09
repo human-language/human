@@ -1,6 +1,7 @@
 use crate::error::LexError;
 use crate::token::{Token, TokenKind, Keyword, Span, keyword_from_str, is_constraint_keyword};
 
+
 const MAX_ERRORS: usize = 10;
 
 pub struct Lexer<'a> {
@@ -28,7 +29,7 @@ impl<'a> Lexer<'a> {
 
     pub fn tokenize(mut self) -> Result<Vec<Token<'a>>, Vec<LexError>> {
         self.validate_ascii();
-        if self.errors.len() >= MAX_ERRORS {
+        if !self.errors.is_empty() {
             return Err(self.errors);
         }
 
@@ -208,10 +209,17 @@ impl<'a> Lexer<'a> {
             }
 
             if *kw == Keyword::Import {
-                // IMPORT has special handling: rest of line is path or ident
                 self.skip_spaces();
                 if !self.at_eol() {
                     self.lex_import_target();
+                }
+                return;
+            }
+
+            if *kw == Keyword::System {
+                self.skip_spaces();
+                if !self.at_eol() {
+                    self.lex_system_target();
                 }
                 return;
             }
@@ -267,14 +275,21 @@ impl<'a> Lexer<'a> {
             let path = self.str_from(start, self.pos).trim_end();
             self.emit(TokenKind::Path(path), start, (self.pos - start) as u16);
         } else {
-            // Package name: consume until whitespace or EOL
-            // Allows a-z, A-Z, 0-9, _, /, -, .
+            // Package name: consume until whitespace or EOL.
+            // May contain '/', '-', '.' — not a valid identifier, hence Package not Ident.
             while self.pos < self.src.len() && !self.at_eol() && self.src[self.pos] != b' ' {
                 self.pos += 1;
             }
-            let ident = self.str_from(start, self.pos).trim_end();
-            self.emit(TokenKind::Ident(ident), start, (self.pos - start) as u16);
+            let pkg = self.str_from(start, self.pos).trim_end();
+            self.emit(TokenKind::Package(pkg), start, (self.pos - start) as u16);
         }
+    }
+
+    fn lex_system_target(&mut self) {
+        let start = self.pos;
+        self.skip_to_eol();
+        let path = self.str_from(start, self.pos).trim_end();
+        self.emit(TokenKind::Path(path), start, (self.pos - start) as u16);
     }
 
     fn lex_normal_token(&mut self) {
@@ -326,7 +341,7 @@ impl<'a> Lexer<'a> {
         self.advance(); // skip opening "
         let mut buf = String::new();
         loop {
-            if self.pos >= self.src.len() || self.src[self.pos] == b'\n' {
+            if self.pos >= self.src.len() || self.src[self.pos] == b'\n' || self.src[self.pos] == b'\r' {
                 self.errors.push(LexError::new(
                     self.line, self.col_at(start),
                     "unterminated string literal",
@@ -403,13 +418,14 @@ impl<'a> Lexer<'a> {
     // --- helpers ---
 
     fn emit(&mut self, kind: TokenKind<'a>, offset: usize, len: u16) {
+        let col = self.col_at(offset);
         self.tokens.push(Token {
             kind,
             span: Span {
                 offset: offset as u32,
                 len,
                 line: self.line,
-                col: self.col,
+                col,
             },
         });
     }
@@ -445,18 +461,27 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_newline(&mut self) {
+        let had_newline;
         if self.pos < self.src.len() {
             if self.src[self.pos] == b'\r' {
                 self.pos += 1;
                 if self.pos < self.src.len() && self.src[self.pos] == b'\n' {
                     self.pos += 1;
                 }
+                had_newline = true;
             } else if self.src[self.pos] == b'\n' {
                 self.pos += 1;
+                had_newline = true;
+            } else {
+                had_newline = false;
             }
+        } else {
+            had_newline = false;
         }
-        self.line += 1;
-        self.col = 1;
+        if had_newline {
+            self.line += 1;
+            self.col = 1;
+        }
     }
 
     fn at_eol(&self) -> bool {

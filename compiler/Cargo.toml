@@ -1,0 +1,20 @@
+[package]
+name = "human-compiler"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "human_compiler"
+path = "src/lib.rs"
+
+[dependencies]
+human-lexer = { path = "../lexer" }
+human-parser = { path = "../parser" }
+human-resolver = { path = "../resolver" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = { version = "0.8", features = ["display"] }
+
+[dev-dependencies]
+tempfile = "3"

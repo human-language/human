@@ -79,7 +79,7 @@ fn keyword_import_path() {
 fn keyword_import_package() {
     assert_eq!(lex("IMPORT safety\n"), vec![
         TokenKind::Keyword(Keyword::Import),
-        TokenKind::Ident("safety"),
+        TokenKind::Package("safety"),
         TokenKind::Newline,
         TokenKind::Eof,
     ]);
@@ -89,7 +89,17 @@ fn keyword_import_package() {
 fn keyword_import_package_subpath() {
     assert_eq!(lex("IMPORT safety/strict\n"), vec![
         TokenKind::Keyword(Keyword::Import),
-        TokenKind::Ident("safety/strict"),
+        TokenKind::Package("safety/strict"),
+        TokenKind::Newline,
+        TokenKind::Eof,
+    ]);
+}
+
+#[test]
+fn keyword_import_package_with_dots() {
+    assert_eq!(lex("IMPORT org.safety.v2\n"), vec![
+        TokenKind::Keyword(Keyword::Import),
+        TokenKind::Package("org.safety.v2"),
         TokenKind::Newline,
         TokenKind::Eof,
     ]);
@@ -469,6 +479,17 @@ fn lowercase_not_keyword() {
 // --- ASCII enforcement ---
 
 #[test]
+fn ascii_error_bails_before_tokenizing() {
+    // Single non-ASCII byte: should error and not produce any tokens
+    let input = b"AGENT \xFF support\n";
+    let lexer = Lexer::new(input);
+    let result = lexer.tokenize();
+    assert!(result.is_err());
+    let errs = result.unwrap_err();
+    assert!(errs.iter().any(|e| e.message.contains("ASCII")));
+}
+
+#[test]
 fn ascii_reject_emoji() {
     let input = b"AGENT support \xF0\x9F\x91\x8B\n";
     let lexer = Lexer::new(input);
@@ -599,6 +620,20 @@ fn flow_body_tokenizes_normally() {
     assert!(tokens.contains(&TokenKind::Ident("permissions")));
 }
 
+// --- Span column accuracy ---
+
+#[test]
+fn span_col_is_start_of_token() {
+    // "AGENT support\n"
+    //  ^     ^
+    //  col1  col7
+    let lexer = Lexer::new(b"AGENT support\n");
+    let tokens = lexer.tokenize().unwrap();
+    // tokens: [Keyword(Agent), Ident("support"), Newline, Eof]
+    assert_eq!(tokens[0].span.col, 1, "AGENT should start at col 1");
+    assert_eq!(tokens[1].span.col, 7, "support should start at col 7");
+}
+
 // --- Property assignment ---
 
 #[test]
@@ -612,4 +647,189 @@ fn property_assignment_string() {
         TokenKind::Dedent,
         TokenKind::Eof,
     ]);
+}
+
+// --- Bug #6: SYSTEM path handling (rest-of-line capture) ---
+
+#[test]
+fn system_path_with_spaces() {
+    assert_eq!(lex("SYSTEM ./prompts/my support file.md\n"), vec![
+        TokenKind::Keyword(Keyword::System),
+        TokenKind::Path("./prompts/my support file.md"),
+        TokenKind::Newline,
+        TokenKind::Eof,
+    ]);
+}
+
+#[test]
+fn system_parent_path() {
+    assert_eq!(lex("SYSTEM ../shared/prompts/base.md\n"), vec![
+        TokenKind::Keyword(Keyword::System),
+        TokenKind::Path("../shared/prompts/base.md"),
+        TokenKind::Newline,
+        TokenKind::Eof,
+    ]);
+}
+
+#[test]
+fn system_no_target() {
+    assert_eq!(lex("SYSTEM\n"), vec![
+        TokenKind::Keyword(Keyword::System),
+        TokenKind::Newline,
+        TokenKind::Eof,
+    ]);
+}
+
+// --- Bug #1: EOF line number ---
+
+#[test]
+fn eof_line_without_trailing_newline() {
+    let lexer = Lexer::new(b"AGENT support");
+    let tokens = lexer.tokenize().unwrap();
+    let eof = tokens.last().unwrap();
+    assert_eq!(eof.span.line, 1, "EOF should be on line 1 when no trailing newline");
+}
+
+#[test]
+fn eof_line_with_trailing_newline() {
+    let lexer = Lexer::new(b"AGENT support\n");
+    let tokens = lexer.tokenize().unwrap();
+    let eof = tokens.last().unwrap();
+    assert_eq!(eof.span.line, 2, "EOF should be on line 2 after trailing newline");
+}
+
+// --- Bug fix: \\r in strings ---
+
+#[test]
+fn string_unterminated_at_crlf() {
+    let input = b"  INPUT \"hello\r\nworld\"\n";
+    let lexer = Lexer::new(input);
+    let result = lexer.tokenize();
+    assert!(result.is_err());
+    let errs = result.unwrap_err();
+    assert!(errs.iter().any(|e| e.message.contains("unterminated string")));
+}
+
+// --- Deep indentation ---
+
+#[test]
+fn indent_deep_nest_and_unwind() {
+    let input = "A\n  B\n    C\n  D\nE\n";
+    let tokens = lex(input);
+    let indent_count = tokens.iter().filter(|t| matches!(t, TokenKind::Indent)).count();
+    let dedent_count = tokens.iter().filter(|t| matches!(t, TokenKind::Dedent)).count();
+    assert_eq!(indent_count, dedent_count);
+    assert_eq!(indent_count, 2);
+}
+
+#[test]
+fn indent_multi_dedent_at_once() {
+    let input = "A\n  B\n    C\nD\n";
+    let tokens = lex(input);
+    let indent_count = tokens.iter().filter(|t| matches!(t, TokenKind::Indent)).count();
+    let dedent_count = tokens.iter().filter(|t| matches!(t, TokenKind::Dedent)).count();
+    assert_eq!(indent_count, 2);
+    assert_eq!(dedent_count, 2);
+}
+
+// --- Indentation errors ---
+
+#[test]
+fn indent_odd_spaces() {
+    let errs = lex_err("   NEVER share data\n");
+    assert!(errs.iter().any(|e| e.contains("multiple of 2")));
+}
+
+#[test]
+fn indent_mismatch_level() {
+    let errs = lex_err("CONSTRAINTS rules\n    NEVER leak\n  MUST help\n");
+    assert!(errs.iter().any(|e| e.contains("does not match any outer level")));
+}
+
+// --- Blank lines ---
+
+#[test]
+fn consecutive_blank_lines() {
+    let tokens = lex("\n\n\nAGENT x\n");
+    assert!(tokens.contains(&TokenKind::Keyword(Keyword::Agent)));
+    assert!(tokens.contains(&TokenKind::Ident("x")));
+    let non_meta: Vec<_> = tokens.iter().filter(|t| !matches!(t, TokenKind::Newline | TokenKind::Eof)).collect();
+    assert_eq!(non_meta.len(), 2);
+}
+
+// --- CRLF full file ---
+
+#[test]
+fn crlf_full_file() {
+    let input = "AGENT support\r\nSYSTEM ./prompt.md\r\nCONSTRAINTS rules\r\n  NEVER leak\r\n";
+    let tokens = lex(input);
+    assert!(tokens.contains(&TokenKind::Keyword(Keyword::Agent)));
+    assert!(tokens.contains(&TokenKind::Ident("support")));
+    assert!(tokens.contains(&TokenKind::Keyword(Keyword::System)));
+    assert!(tokens.contains(&TokenKind::Path("./prompt.md")));
+    assert!(tokens.contains(&TokenKind::Keyword(Keyword::Never)));
+    assert!(tokens.contains(&TokenKind::Text("leak")));
+    let indent_count = tokens.iter().filter(|t| matches!(t, TokenKind::Indent)).count();
+    let dedent_count = tokens.iter().filter(|t| matches!(t, TokenKind::Dedent)).count();
+    assert_eq!(indent_count, dedent_count);
+}
+
+// --- Empty string literal ---
+
+#[test]
+fn string_empty() {
+    assert_eq!(lex("  INPUT \"\"\n"), vec![
+        TokenKind::Indent,
+        TokenKind::Keyword(Keyword::Input),
+        TokenKind::Str("".to_string()),
+        TokenKind::Newline,
+        TokenKind::Dedent,
+        TokenKind::Eof,
+    ]);
+}
+
+// --- Comment with no space after # ---
+
+#[test]
+fn comment_no_space_after_hash() {
+    assert_eq!(lex("#comment\n"), vec![
+        TokenKind::Comment("comment"),
+        TokenKind::Newline,
+        TokenKind::Eof,
+    ]);
+}
+
+// --- Constraint at column 0 ---
+
+#[test]
+fn constraint_at_column_zero() {
+    assert_eq!(lex("NEVER share data\n"), vec![
+        TokenKind::Keyword(Keyword::Never),
+        TokenKind::Text("share data"),
+        TokenKind::Newline,
+        TokenKind::Eof,
+    ]);
+}
+
+// --- IMPORT with no target ---
+
+#[test]
+fn import_no_target() {
+    assert_eq!(lex("IMPORT\n"), vec![
+        TokenKind::Keyword(Keyword::Import),
+        TokenKind::Newline,
+        TokenKind::Eof,
+    ]);
+}
+
+// --- Error accumulation cap ---
+
+#[test]
+fn error_cap_at_10() {
+    let mut input = String::new();
+    for _ in 0..15 {
+        input.push_str("\t\tNEVER leak\n");
+    }
+    let errs = lex_err(&input);
+    assert_eq!(errs.len(), 10);
 }

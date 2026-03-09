@@ -32,8 +32,10 @@ impl<'a> Parser<'a> {
     }
 
     fn advance(&mut self) -> &Token<'a> {
-        let tok = &self.tokens[self.pos];
-        self.pos += 1;
+        let tok = &self.tokens[self.pos.min(self.tokens.len() - 1)];
+        if self.pos < self.tokens.len() {
+            self.pos += 1;
+        }
         tok
     }
 
@@ -184,8 +186,8 @@ impl<'a> Parser<'a> {
                 self.advance();
                 t
             }
-            TokenKind::Ident(id) => {
-                let t = ImportTarget::Package(id.to_string());
+            TokenKind::Package(pkg) => {
+                let t = ImportTarget::Package(pkg.to_string());
                 self.advance();
                 t
             }
@@ -433,20 +435,10 @@ impl<'a> Parser<'a> {
             match self.peek() {
                 TokenKind::Dedent => { self.advance(); break; }
                 TokenKind::Eof => break,
-                TokenKind::Text(t) => {
-                    let step = FlowStep { text: t.to_string(), span: self.span() };
-                    self.advance();
-                    self.expect_newline();
-                    steps.push(step);
-                }
-                TokenKind::Ident(_) => {
+                _ => {
                     if let Some(step) = self.parse_flow_step() {
                         steps.push(step);
                     }
-                }
-                _ => {
-                    self.error(format!("unexpected token in FLOW body: {}", self.peek()));
-                    self.skip_to_newline();
                 }
             }
             if self.too_many_errors() { break; }
@@ -459,9 +451,16 @@ impl<'a> Parser<'a> {
         let span = self.span();
         let mut words = Vec::new();
 
-        while let TokenKind::Ident(id) = self.peek() {
-            words.push(id.to_string());
-            self.advance();
+        loop {
+            match self.peek() {
+                TokenKind::Newline | TokenKind::Dedent | TokenKind::Eof => break,
+                TokenKind::Ident(id) => { words.push(id.to_string()); self.advance(); }
+                TokenKind::Text(t) => { words.push(t.to_string()); self.advance(); }
+                TokenKind::Keyword(kw) => { words.push(kw.to_string()); self.advance(); }
+                TokenKind::Number(n) => { words.push(n.to_string()); self.advance(); }
+                TokenKind::Bool(b) => { words.push(b.to_string()); self.advance(); }
+                _ => { words.push(format!("{}", self.peek())); self.advance(); }
+            }
         }
 
         if words.is_empty() {

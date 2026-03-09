@@ -508,3 +508,213 @@ fn spans_are_populated() {
     assert!(agent.span.line > 0);
     assert!(agent.span.col > 0);
 }
+
+// --- Bug #4: FLOW steps with keywords ---
+
+#[test]
+fn flow_step_with_keyword() {
+    let input = "\
+FLOW process
+  check NEVER conditions
+  validate MUST rules
+";
+    let file = parse_ok(input);
+    let flow = &file.flows[0];
+    assert_eq!(flow.steps.len(), 2);
+    assert_eq!(flow.steps[0].text, "check NEVER conditions");
+    assert_eq!(flow.steps[1].text, "validate MUST rules");
+}
+
+#[test]
+fn flow_step_with_constraint_keyword_first() {
+    let input = "\
+FLOW process
+  MUST validate input
+";
+    let file = parse_ok(input);
+    let flow = &file.flows[0];
+    assert_eq!(flow.steps.len(), 1);
+    assert_eq!(flow.steps[0].text, "MUST validate input");
+}
+
+#[test]
+fn flow_single_word_step() {
+    let input = "\
+FLOW process
+  validate
+";
+    let file = parse_ok(input);
+    assert_eq!(file.flows[0].steps.len(), 1);
+    assert_eq!(file.flows[0].steps[0].text, "validate");
+}
+
+#[test]
+fn flow_step_with_number() {
+    let input = "\
+FLOW process
+  process 42 items
+";
+    let file = parse_ok(input);
+    assert_eq!(file.flows[0].steps[0].text, "process 42 items");
+}
+
+#[test]
+fn flow_empty_body() {
+    let errors = parse_err("FLOW process\nCONSTRAINTS rules\n  NEVER leak\n");
+    assert!(errors.iter().any(|e| e.message.contains("expected indented block")));
+}
+
+// --- CONSTRAINTS edge cases ---
+
+#[test]
+fn constraints_only_comments() {
+    let input = "\
+CONSTRAINTS rules
+  # just a comment
+  # another comment
+";
+    let file = parse_ok(input);
+    assert_eq!(file.constraints[0].name, "rules");
+    assert!(file.constraints[0].constraints.is_empty());
+}
+
+#[test]
+fn constraints_empty_body() {
+    let input = "\
+CONSTRAINTS rules
+AGENT bot
+";
+    let errors = parse_err(input);
+    assert!(errors.iter().any(|e| e.message.contains("expected indented block")));
+}
+
+// --- TEST edge cases ---
+
+#[test]
+fn test_no_input() {
+    let input = "\
+TEST
+  EXPECT CONTAINS \"hello\"
+";
+    let file = parse_ok(input);
+    assert!(file.tests[0].inputs.is_empty());
+    assert_eq!(file.tests[0].expects.len(), 1);
+}
+
+#[test]
+fn test_no_expect() {
+    let input = "\
+TEST
+  INPUT \"hello\"
+";
+    let file = parse_ok(input);
+    assert_eq!(file.tests[0].inputs.len(), 1);
+    assert!(file.tests[0].expects.is_empty());
+}
+
+// --- Property errors ---
+
+#[test]
+fn property_missing_value() {
+    let input = "\
+AGENT bot
+  model =
+";
+    let errors = parse_err(input);
+    assert!(errors.iter().any(|e| e.message.contains("expected value after '='")));
+}
+
+#[test]
+fn property_missing_equals() {
+    let input = "\
+AGENT bot
+  model \"gpt-4\"
+";
+    let errors = parse_err(input);
+    assert!(errors.iter().any(|e| e.message.contains("expected '=' after property name")));
+}
+
+// --- Ordering ---
+
+#[test]
+fn import_after_agent() {
+    let input = "\
+AGENT bot
+IMPORT ./safety.hmn
+CONSTRAINTS rules
+  NEVER leak
+";
+    let file = parse_ok(input);
+    assert_eq!(file.agent.as_ref().unwrap().name, "bot");
+    assert_eq!(file.imports.len(), 1);
+    assert_eq!(file.constraints.len(), 1);
+}
+
+// --- Full complex file ---
+
+#[test]
+fn full_complex_file() {
+    let input = "\
+IMPORT ./safety.hmn
+IMPORT utils
+
+# file-level comment
+AGENT support
+SYSTEM ./prompts/support.md
+
+CONSTRAINTS safety
+  # hard stops
+  NEVER leak data
+  MUST be accurate
+
+CONSTRAINTS quality
+  SHOULD be concise
+  AVOID jargon
+  MAY escalate
+
+FLOW onboard
+  greet user
+  verify identity
+
+FLOW process
+  handle request
+  check NEVER violations
+
+TEST
+  INPUT \"hello\"
+  EXPECT CONTAINS \"hi\"
+  EXPECT NOT CONTAINS \"bye\"
+
+TEST
+  INPUT \"show emails\"
+  EXPECT NOT CONTAINS \"email\"
+  EXPECT MATCHES \"sorry.*\"
+";
+    let file = parse_ok(input);
+    assert_eq!(file.imports.len(), 2);
+    let agent = file.agent.as_ref().unwrap();
+    assert_eq!(agent.name, "support");
+    assert_eq!(agent.system.as_ref().unwrap().path, "./prompts/support.md");
+    assert_eq!(file.constraints.len(), 2);
+    assert_eq!(file.constraints[0].constraints.len(), 2);
+    assert_eq!(file.constraints[1].constraints.len(), 3);
+    assert_eq!(file.flows.len(), 2);
+    assert_eq!(file.flows[0].steps.len(), 2);
+    assert_eq!(file.flows[1].steps.len(), 2);
+    assert_eq!(file.flows[1].steps[1].text, "check NEVER violations");
+    assert_eq!(file.tests.len(), 2);
+    assert_eq!(file.tests[0].expects.len(), 2);
+    assert_eq!(file.tests[1].expects.len(), 2);
+}
+
+// --- Error cap ---
+
+#[test]
+fn error_cap_at_10() {
+    let mut input = String::new();
+    for i in 0..15 {
+        input.push_str(&format!("CONSTRAINTS c{}\n", i));
+    }
+    let errors = parse_err(&input);
+    assert_eq!(errors.len(), 10);
+}
