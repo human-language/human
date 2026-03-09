@@ -1,0 +1,8 @@
+[package]
+name = "human-errors"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "human_errors"
+path = "src/lib.rs"

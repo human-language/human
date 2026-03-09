@@ -87,6 +87,7 @@ name = "human-cli"
 version = "0.1.0"
 dependencies = [
  "human-compiler",
+ "human-errors",
  "human-lexer",
  "human-parser",
  "human-resolver",
@@ -106,6 +107,10 @@ dependencies = [
  "serde_yaml",
  "toml",
 ]
+
+[[package]]
+name = "human-errors"
+version = "0.1.0"
 
 [[package]]
 name = "human-lexer"

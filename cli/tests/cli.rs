@@ -69,6 +69,8 @@ fn validate_broken() {
     assert!(out.stdout.is_empty());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert!(stderr.contains(" --> "), "should have location arrow: {stderr}");
+    assert!(stderr.contains(" | "), "should have gutter: {stderr}");
 }
 
 #[test]
@@ -80,7 +82,8 @@ fn validate_missing() {
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("error:") || stderr.contains("No such file"), "stderr: {stderr}");
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert!(stderr.contains(" --> "), "should have location arrow: {stderr}");
 }
 
 #[test]
@@ -189,6 +192,7 @@ fn compile_broken() {
     assert!(out.stdout.is_empty());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert!(stderr.contains(" --> "), "should have location arrow: {stderr}");
 }
 
 #[test]
@@ -281,6 +285,8 @@ fn fmt_broken() {
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert!(stderr.contains(" --> "), "should have location arrow: {stderr}");
+    assert!(stderr.contains(" | "), "should have gutter: {stderr}");
 }
 
 // ── additional coverage ──
@@ -367,4 +373,79 @@ fn fmt_help() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("usage:"), "stderr: {stderr}");
     assert!(stderr.contains("fmt"), "stderr: {stderr}");
+}
+
+// ── error formatter output ──
+
+#[test]
+fn error_shows_source_context() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("test.hmn");
+    std::fs::write(&path, "AGENT @bot\n").unwrap();
+
+    let out = human()
+        .arg("fmt")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error:"), "stderr: {stderr}");
+    assert!(stderr.contains("AGENT @bot"), "should show source line: {stderr}");
+    assert!(stderr.contains("^"), "should show caret: {stderr}");
+}
+
+#[test]
+fn error_shows_arrow_location() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("test.hmn");
+    std::fs::write(&path, "CONSTRAINTS\n  MUST be helpful\n").unwrap();
+
+    let out = human()
+        .arg("validate")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains(" --> "), "should have --> arrow: {stderr}");
+    assert!(stderr.contains("test.hmn:"), "should show filename: {stderr}");
+}
+
+#[test]
+fn error_file_level_no_source() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("test.hmn");
+    std::fs::write(&path, "CONSTRAINTS safety\n  NEVER lie\n").unwrap();
+
+    let out = human()
+        .arg("validate")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error: no AGENT declaration found"), "stderr: {stderr}");
+    assert!(stderr.contains(" --> "), "should have --> arrow: {stderr}");
+}
+
+#[test]
+fn multiple_resolver_errors_separated() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let main_path = tmp.path().join("main.hmn");
+    let frag_path = tmp.path().join("frag.hmn");
+    // Both files define CONSTRAINTS safety -> duplicate block error
+    // frag.hmn also has AGENT -> AGENT in non-root error
+    std::fs::write(&frag_path, "AGENT other\n\nCONSTRAINTS safety\n  MUST be kind\n").unwrap();
+    std::fs::write(&main_path, "IMPORT ./frag.hmn\n\nAGENT bot\n\nCONSTRAINTS safety\n  NEVER lie\n").unwrap();
+
+    let out = human()
+        .arg("validate")
+        .arg(&main_path)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let error_blocks: Vec<&str> = stderr.split("\n\n").filter(|s| s.contains("error:")).collect();
+    assert!(error_blocks.len() >= 2, "should have multiple errors separated by blank lines: {stderr}");
 }

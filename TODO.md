@@ -10,3 +10,12 @@
 8. **VSCode Extension** — syntax highlighting, inline error squiggles, autocomplete
 9. **npm Package** — publish `human-lang` so people can `npm install -g human-lang`
 10. **Brew Formula** — single binary distribution for non-Node users
+
+# pre-release
+
+- update all v0.1.0 -> v1
+- code review
+
+# changes
+- change the cli tool to use "hmn" not "human"
+- 

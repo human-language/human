@@ -2,6 +2,7 @@ use std::path::Path;
 use std::process;
 
 use human_compiler::OutputFormat;
+use human_errors::Diagnostic;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -47,12 +48,32 @@ fn check_help(args: &[String], usage: &str) {
 
 fn resolve_file(path: &Path) -> Result<(human_resolver::Resolved, std::path::PathBuf), ()> {
     let canonical = std::fs::canonicalize(path).map_err(|e| {
-        eprintln!("{}: error: {e}", path.display());
+        let d = Diagnostic {
+            file: path.display().to_string(),
+            line: 0, col: 0, len: 0,
+            message: e.to_string(),
+        };
+        eprint!("{}", human_errors::render(&d, None));
     })?;
     let project_root = canonical.parent().unwrap_or(Path::new("."));
     let resolved = human_resolver::resolve(&canonical, project_root).map_err(|errors| {
-        for e in &errors {
-            eprintln!("{e}");
+        for (i, e) in errors.iter().enumerate() {
+            if i > 0 {
+                eprint!("\n");
+            }
+            let d = Diagnostic {
+                file: e.file.display().to_string(),
+                line: e.line.unwrap_or(0),
+                col: e.col.unwrap_or(0),
+                len: 0,
+                message: e.message.clone(),
+            };
+            let src = if e.line.is_some() {
+                std::fs::read(&e.file).ok()
+            } else {
+                None
+            };
+            eprint!("{}", human_errors::render(&d, src.as_deref()));
         }
     })?;
     Ok((resolved, canonical))
@@ -60,18 +81,33 @@ fn resolve_file(path: &Path) -> Result<(human_resolver::Resolved, std::path::Pat
 
 fn read_and_parse(path: &Path) -> Result<human_parser::HmnFile, ()> {
     let bytes = std::fs::read(path).map_err(|e| {
-        eprintln!("{}: error: {e}", path.display());
+        let d = Diagnostic {
+            file: path.display().to_string(),
+            line: 0, col: 0, len: 0,
+            message: e.to_string(),
+        };
+        eprint!("{}", human_errors::render(&d, None));
     })?;
     let filename = path.display().to_string();
     let tokens = human_lexer::Lexer::new(&bytes).tokenize().map_err(|errors| {
-        for e in &errors {
-            eprintln!("{}", e.display_with_file(&filename));
-        }
+        let ds: Vec<_> = errors.iter().map(|e| Diagnostic {
+            file: filename.clone(),
+            line: e.line,
+            col: e.col,
+            len: 0,
+            message: e.message.clone(),
+        }).collect();
+        eprint!("{}", human_errors::render_batch(&ds, Some(&bytes)));
     })?;
     let hmn_file = human_parser::parse(&tokens).map_err(|errors| {
-        for e in &errors {
-            eprintln!("{}", e.display_with_file(&filename));
-        }
+        let ds: Vec<_> = errors.iter().map(|e| Diagnostic {
+            file: filename.clone(),
+            line: e.span.line,
+            col: e.span.col,
+            len: e.span.len,
+            message: e.message.clone(),
+        }).collect();
+        eprint!("{}", human_errors::render_batch(&ds, Some(&bytes)));
     })?;
     Ok(hmn_file)
 }
@@ -103,7 +139,12 @@ fn cmd_compile(args: &[String]) {
     match human_compiler::compile(&resolved, &canonical, format) {
         Ok(output) => print!("{output}"),
         Err(e) => {
-            eprintln!("{e}");
+            let d = Diagnostic {
+                file: e.file.display().to_string(),
+                line: 0, col: 0, len: 0,
+                message: e.message.clone(),
+            };
+            eprint!("{}", human_errors::render(&d, None));
             process::exit(1);
         }
     }
